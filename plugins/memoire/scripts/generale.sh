@@ -1,66 +1,65 @@
 #!/usr/bin/env bash
-# Keep a local working copy of the general memory (general/ in the repository) and push it back.
+# Locate the general memory (general/ in the durable clone) and show its index.
 #
-# Usage: generale.sh path
-#        generale.sh pull [--dry-run] [--mirror]
-#        generale.sh push [--dry-run|--commit] [--force] [--accept-loss] [--message "texte"]
-#   path : print the local directory of the general memory
-#   pull : synchronise general/ from the repository into that directory (three-way merge)
-#   push : commit and push that directory into general/ (--accept-loss when files disappear)
+# Usage: generale.sh [show]
+#        generale.sh path
+#        generale.sh --compare-old
+#   show          : print the folder of the general memory and its index (default)
+#   path          : print only the folder, for a session that already knows the index
+#   --compare-old : compare the local copy kept by the 0.6.x versions with the clone,
+#                   read-only, to see what a migration would have to bring over
 #
-# Exit codes: 0 ok, 1 usage, 2 git error, 4 repository moved, 5 secret found,
-#             6 unresolved conflict markers, 7 loss refused, 10 no repository configured.
+# The general memory is no longer a separate copy: it is a folder of the clone, read in
+# place and synchronised with everything else by pull.sh and push.sh. Reading works offline,
+# on the state of the last pull.
+#
+# Exit codes: 0 ok, 1 usage, 2 git error, 10 no repository configured,
+#             11 the clone belongs to another repository.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-CMD="${1:-}"
-shift || true
-DRY_RUN=0
-MIRROR=0
-MODE="--dry-run"
-FORCE=0
-ACCEPT_LOSS=0
-MESSAGE=""
+CMD="${1:-show}"
+GENERAL_DIR="$CLONE/general"
+
+make_tmp
 
 case "$CMD" in
   path)
-    display_path "$GENERAL_DIR"
-    exit 0 ;;
-  pull)
-    for arg in "$@"; do
-      case "$arg" in
-        --dry-run) DRY_RUN=1 ;;
-        --mirror) MIRROR=1 ;;
-        *) echo "argument inconnu: $arg" >&2; exit 1 ;;
-      esac
-    done
-    read_repo_url
-    clone_repo general
-    if [[ ! -d "$CLONE/general" ]]; then
-      mkdir -p "$GENERAL_DIR"
-      echo "Le depot n'a pas encore de dossier general/ : rien a charger, un push le creera."
-      echo "Copie locale : $(display_path "$GENERAL_DIR")"
+    ensure_clone
+    display_path "$GENERAL_DIR" ;;
+
+  show)
+    ensure_clone
+    fetch_origin soft
+    resolve_branch
+    count_divergence
+    echo "== Memoire generale : $(display_path "$GENERAL_DIR") =="
+    if [[ "$BEHIND" -gt 0 ]]; then
+      echo "(le depot a $BEHIND commit(s) que ce clone n'a pas encore : un pull mettrait cette memoire a jour)"
+    fi
+    if [[ -f "$GENERAL_DIR/MEMORY.md" ]]; then
+      echo "== MEMORY.md =="
+      cat "$GENERAL_DIR/MEMORY.md"
+    else
+      echo "Pas encore de memoire generale dans le clone : la premiere fiche, et son index MEMORY.md, la creeront."
+    fi ;;
+
+  --compare-old|compare-old)
+    ensure_clone
+    if [[ ! -d "$LEGACY_GENERAL_DIR" ]]; then
+      echo "Pas d'ancienne copie locale ($(display_path "$LEGACY_GENERAL_DIR")) : rien a comparer."
       exit 0
     fi
-    sync_from_repo general "$GENERAL_DIR" general "$DRY_RUN" "$MIRROR"
-    echo "Copie locale : $(display_path "$GENERAL_DIR")" ;;
-  push)
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        --dry-run|--commit) MODE="$1" ;;
-        --force) FORCE=1 ;;
-        --accept-loss) ACCEPT_LOSS=1 ;;
-        --message)
-          [[ $# -ge 2 ]] || { echo "--message attend un texte" >&2; exit 1; }
-          MESSAGE="$2"; shift ;;
-        *) echo "argument inconnu: $1" >&2; exit 1 ;;
-      esac
-      shift
-    done
-    read_repo_url
-    clone_repo general
-    push_to_repo general "$GENERAL_DIR" general "$MODE" "$FORCE" "$MESSAGE" "$ACCEPT_LOSS" ;;
+    echo "== Ancienne copie : $(display_path "$LEGACY_GENERAL_DIR") =="
+    echo "== Dans le clone  : $(display_path "$GENERAL_DIR") =="
+    compare_dirs "$LEGACY_GENERAL_DIR" "$GENERAL_DIR"
+    echo "Rien n'a ete modifie, ni dans l'ancienne copie ni dans le clone." ;;
+
+  pull|push)
+    echo "generale.sh $CMD n'existe plus : la memoire generale suit le reste du depot, par pull.sh et push.sh." >&2
+    exit 1 ;;
+
   *)
-    echo "usage: generale.sh path | pull [--dry-run] [--mirror] | push [--dry-run|--commit] [--force] [--accept-loss] [--message \"texte\"]" >&2
+    echo "usage: generale.sh [show] | path | --compare-old" >&2
     exit 1 ;;
 esac

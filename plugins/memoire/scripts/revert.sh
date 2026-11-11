@@ -1,120 +1,151 @@
 #!/usr/bin/env bash
-# Put a local memory directory back to the state of a given commit of the repository (mirror).
+# Put the folder of a project, or the general memory, back to the state of a given commit,
+# inside the durable clone.
 #
-# Usage: revert.sh <project | generale> <local-dir | -> --list [--count N]
-#        revert.sh <project | generale> <local-dir | -> --commit <sha> [--dry-run]
-#   --list     : print the last commits that touched the memory folder (default 10)
-#   --commit   : restore the folder as it was at that commit, into the local directory
-#   --dry-run  : show what the restore would change, write nothing
-#   "-" as local directory means the local copy of the general memory (project "generale").
+# Usage: revert.sh <project | general> [--count N]
+#        revert.sh <project | general> <commit> [--dry-run] [--force]
+#   without a commit : list the last commits that touched the folder (default 10)
+#   with a commit    : restore the folder as it was at that commit
+#   --dry-run        : show what the restore would change, write nothing
+#   --force          : let a secret false positive through when local work is committed first
 #
-# The repository is not modified. The sync marker is set to the current head of the folder,
-# so the next push is an ordinary push that sends this older state as a new commit (the loss
-# guard will ask for --accept-loss). History stays linear and the newer commits stay readable.
+# The repository is not modified and no history is rewritten. Work of the folder that is
+# not committed yet is committed locally first, so nothing is lost. The folder then becomes
+# what it was at that commit; the next push sends this older state as a new commit (the
+# loss guard will ask for --accept-loss). The newer commits stay readable.
 #
-# Exit codes: 0 ok, 1 usage, 2 git error, 3 project or commit unknown, 10 no repository configured.
+# Exit codes: 0 ok, 1 usage, 2 git error, 3 project or commit unknown, 5 secret found,
+#             6 merge in progress, 10 no repository configured,
+#             11 the clone belongs to another repository.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-PROJECT="${1:-}"
-LOCAL="${2:-}"
-MODE=""
+USAGE="usage: revert.sh <projet|general> [--count N] | revert.sh <projet|general> <commit> [--dry-run] [--force]"
+NAME="${1:-}"
 SHA=""
 COUNT=10
 DRY_RUN=0
-if [[ -z "$PROJECT" || -z "$LOCAL" ]]; then
-  echo "usage: revert.sh <project|generale> <local-dir|-> --list [--count N] | --commit <sha> [--dry-run]" >&2
+FORCE=0
+if [[ -z "$NAME" || "$NAME" == --* ]]; then
+  echo "$USAGE" >&2
   exit 1
 fi
-shift 2
+shift
+# A while loop rather than for: --count consumes the argument that follows it.
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --list) MODE="list" ;;
-    --commit)
-      [[ $# -ge 2 ]] || { echo "--commit attend un identifiant" >&2; exit 1; }
-      MODE="restore"; SHA="$2"; shift ;;
     --count)
       [[ $# -ge 2 ]] || { echo "--count attend un nombre" >&2; exit 1; }
       COUNT="$2"; shift ;;
     --dry-run) DRY_RUN=1 ;;
-    *) echo "argument inconnu: $1" >&2; exit 1 ;;
+    --force) FORCE=1 ;;
+    --*) echo "argument inconnu: $1" >&2; echo "$USAGE" >&2; exit 1 ;;
+    *)
+      [[ -z "$SHA" ]] || { echo "un seul commit a la fois" >&2; exit 1; }
+      SHA="$1" ;;
   esac
   shift
 done
-if [[ -z "$MODE" ]]; then
-  echo "precise --list ou --commit <sha>" >&2
-  exit 1
-fi
 
-read_repo_url
-clone_repo ""
-if [[ "$PROJECT" == "generale" ]]; then
+make_tmp
+ensure_clone
+resolve_branch
+
+# "generale" is the name of the skill: accept it for the general memory too.
+if [[ "$NAME" == "general" || "$NAME" == "generale" ]]; then
   TARGET="general"
   LABEL="general"
-  [[ "$LOCAL" == "-" ]] && LOCAL="$GENERAL_DIR"
-  git -C "$CLONE" sparse-checkout set general 2>/dev/null || true
 else
-  resolve_project "$PROJECT"
+  resolve_project "$NAME"
   LABEL="$PROJECT"
 fi
-if ! git -C "$CLONE" cat-file -e "HEAD:$TARGET" 2>/dev/null; then
-  echo "Pas de dossier $TARGET dans le depot" >&2
+if ! have_head || { ! g cat-file -e "HEAD:$TARGET" 2>/dev/null && [[ ! -d "$CLONE/$TARGET" ]]; }; then
+  echo "Pas de dossier $TARGET dans le clone. Projets connus :" >&2
+  list_projects | sed 's/^/  - /' >&2
   exit 3
 fi
 
-if [[ "$MODE" == "list" ]]; then
+if [[ -z "$SHA" ]]; then
+  TAB=$'\t'
   echo "== Derniers commits de $TARGET (du plus recent au plus ancien) =="
-  # One block per commit: hash, date, title, then the first line of the recap when there is one.
-  git -C "$CLONE" log -n "$COUNT" --date=short --format='%h %ad %s%n%b' -- "$TARGET" \
-    | awk 'NF==0 {next} /^[0-9a-f]{7,} [0-9]{4}-/ {print; getline body; if (body ~ /^[0-9a-f]{7,} [0-9]{4}-/) {print body} else if (body != "") {print "    " body}; next} {print "    " $0}' \
-    | awk '!/^    [AMD]\t/'
+  for h in $(g log -n "$COUNT" --format=%h -- "$TARGET"); do
+    g show -s --date=short --format='%h %ad %s' "$h"
+    # First line of the recap, when the commit has one: skip the file list of the body.
+    recap=$(g show -s --format=%b "$h" | grep -v '^[[:space:]]*$' | grep -vE "^[AMDRCT][0-9]*${TAB}" | head -1 || true)
+    if [[ -n "$recap" ]]; then echo "    $recap"; fi
+  done
+  count_divergence
+  if [[ "$BEHIND" -gt 0 ]]; then
+    echo "(le depot a $BEHIND commit(s) que ce clone n'a pas encore : un pull les ajoutera a cette liste)"
+  fi
   exit 0
 fi
 
 # Restore mode.
-if ! git -C "$CLONE" cat-file -e "$SHA^{commit}" 2>/dev/null; then
-  echo "Commit inconnu dans le depot : $SHA" >&2
+if ! g cat-file -e "$SHA^{commit}" 2>/dev/null; then
+  echo "Commit inconnu dans le clone : $SHA" >&2
   exit 3
 fi
-if ! git -C "$CLONE" cat-file -e "$SHA:$TARGET" 2>/dev/null; then
+if ! g cat-file -e "$SHA:$TARGET" 2>/dev/null; then
   echo "Le dossier $TARGET n'existe pas au commit $SHA" >&2
   exit 3
 fi
-FULL=$(git -C "$CLONE" rev-parse --short "$SHA")
-mkdir -p "$TMP/restore"
-# git archive fetches the blobs of that commit on demand in a partial clone.
-git -C "$CLONE" archive "$SHA" "$TARGET" | tar -x -C "$TMP/restore"
-RESTORED="$TMP/restore/$TARGET"
-mkdir -p "$LOCAL"
+SHORT=$(g rev-parse --short "$SHA")
+WORK=$(work_tree_id)
 
-echo "== Etat au commit $FULL compare a la copie locale =="
-( cd "$RESTORED" && find . -type f ! -name .gitkeep | sed 's#^\./##' | sort ) > "$TMP/files_then"
-( cd "$LOCAL" && find . -type f ! -name .memoire-sync | sed 's#^\./##' | sort ) > "$TMP/files_now"
-restored_n=0; removed_n=0; same_n=0
-while IFS= read -r f; do
-  if [[ ! -f "$LOCAL/$f" ]]; then
-    echo "a restaurer : $f"; restored_n=$((restored_n + 1))
-  elif cmp -s <(tr -d '\r' < "$RESTORED/$f") <(tr -d '\r' < "$LOCAL/$f"); then
-    same_n=$((same_n + 1))
-  else
-    echo "a remettre  : $f (contenu different)"; restored_n=$((restored_n + 1))
-  fi
-done < "$TMP/files_then"
-while IFS= read -r f; do
-  if ! grep -qx -- "$f" "$TMP/files_then"; then
-    echo "a retirer   : $f (absent a ce commit)"; removed_n=$((removed_n + 1))
-  fi
-done < "$TMP/files_now"
-echo "== $restored_n fichier(s) a restaurer, $removed_n a retirer, $same_n identique(s) =="
+# From the working state to the commit: A exists only at the commit, D exists only now.
+CHANGES=$(g diff --no-renames --name-status "$WORK" "$SHA" -- "$TARGET")
+RESTORE_N=0
+REMOVE_N=0
+echo "== Etat au commit $SHORT compare au dossier actuel =="
+while IFS=$'\t' read -r status path; do
+  [[ -n "$status" ]] || continue
+  case "$status" in
+    A) echo "a restaurer : $path"; RESTORE_N=$((RESTORE_N + 1)) ;;
+    D) echo "a retirer   : $path (absent a ce commit)"; REMOVE_N=$((REMOVE_N + 1)) ;;
+    *) echo "a remettre  : $path (contenu different)"; RESTORE_N=$((RESTORE_N + 1)) ;;
+  esac
+done <<< "$CHANGES"
+TOTAL=$(g ls-tree -r --name-only "$SHA" -- "$TARGET" | grep -c . || true)
+echo "== $RESTORE_N fichier(s) a restaurer, $REMOVE_N a retirer, $((TOTAL - RESTORE_N)) identique(s) =="
 
+if [[ -z "$CHANGES" ]]; then
+  echo "Le dossier est deja dans l'etat de ce commit : rien a faire."
+  exit 0
+fi
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "== Simulation : rien n'a ete ecrit =="
   exit 0
 fi
 
-# Mirror: the local directory becomes the folder as it was at that commit.
-find "$LOCAL" -mindepth 1 ! -name .memoire-sync -delete
-cp -r "$RESTORED"/. "$LOCAL"/
-write_marker "$LOCAL" "$TARGET" "$LABEL"
-echo "== $LABEL restaure au commit $FULL dans $(display_path "$LOCAL") (marqueur sur ${LAST_COMMIT:0:12}, tete actuelle) =="
-echo "La memoire sera chargee au prochain demarrage de session. Pour renvoyer cet etat dans le depot : push (la perte sera signalee)."
+if merge_in_progress; then
+  echo "Une fusion est en cours dans le clone : conclus-la (pull.sh --conclude) ou annule-la (pull.sh --abort) avant un retour en arriere." >&2
+  exit 6
+fi
+
+# Work of the folder that is not committed yet goes into a local commit first: the restore
+# overwrites the files, and this commit is what keeps the current state reachable.
+PENDING=$(g diff --no-renames --name-status "$(head_tree)" "$WORK" -- "$TARGET")
+if [[ -n "$PENDING" ]]; then
+  HITS=$(printf '%s\n' "$PENDING" | awk -F'\t' '$1 != "D" {print $2}' | files_with_secrets)
+  if [[ -n "$HITS" ]]; then
+    echo "Motif de secret detecte dans le travail local :" >&2
+    printf '%s\n' "$HITS" >&2
+    if [[ "$FORCE" -eq 0 ]]; then
+      echo "Corrige ces fichiers puis relance. Rien n'a ete commite ni restaure." >&2
+      exit 5
+    fi
+  fi
+  ensure_identity
+  g add -A -- "$TARGET"
+  g commit -q -m "memoire($LABEL): travail local sur $(host_label) avant revert du $(date +%Y-%m-%d)" -m "$PENDING" -- "$TARGET" \
+    || { echo "Le commit du travail local a echoue : rien n'a ete restaure." >&2; exit 2; }
+  echo "(travail local du dossier commite avant le retour en arriere : $(g log -1 --format=%h))"
+fi
+
+# Mirror: tracked files that did not exist at that commit are removed, the others get the
+# content they had. Everything under the folder is tracked at this point.
+g restore --source="$SHA" --staged --worktree -- "$TARGET" || { echo "git restore a echoue" >&2; exit 2; }
+echo "== $LABEL remis dans l'etat du commit $SHORT, dans $(display_path "$CLONE/$TARGET") =="
+echo "Le depot n'est pas modifie. Pour y renvoyer cet etat : push (la perte sera signalee, c'est attendu)."
+echo "La memoire sera chargee au prochain demarrage de session."
