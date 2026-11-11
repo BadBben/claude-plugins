@@ -1,0 +1,12 @@
+{
+  "name": "badbben",
+  "owner": { "name": "BadBben" },
+  "description": "Plugins Claude de BadBben. Premier plugin : memoire, une memoire partagee entre appareils via un depot git.",
+  "plugins": [
+    {
+      "name": "memoire",
+      "source": "./plugins/memoire",
+      "description": "Memoire partagee entre appareils : synchronise la memoire auto de Claude Code avec un depot git (pull, push, memoire generale, consolidation sans perte, retour a une version precedente). Fonctionne aussi dans le chat claude.ai. Le depot est configure une fois par appareil."
+    }
+  ]
+}

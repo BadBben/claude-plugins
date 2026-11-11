@@ -1,0 +1,6 @@
+{
+  "name": "memoire",
+  "description": "Memoire partagee entre appareils : pull, push, memoire generale, consolidation et retour en arriere via un depot git configure une fois par appareil",
+  "version": "0.6.3",
+  "author": { "name": "BadBben" }
+}
