@@ -1,6 +1,6 @@
 {
   "name": "memoire",
-  "description": "Memoire partagee entre appareils : pull, push, memoire generale, consolidation et retour en arriere via un depot git clone une fois par appareil",
-  "version": "0.7.0",
+  "description": "Memoire partagee entre appareils : mise en place guidee, pull, push, memoire generale, entretien pour l'enrichir, table de routage et index, optimisation avec score de sante et retour en arriere via un depot git clone une fois par appareil",
+  "version": "0.11.2",
   "author": { "name": "BadBben" }
 }

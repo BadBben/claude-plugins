@@ -9,13 +9,14 @@ allowed-tools: Bash(bash ${CLAUDE_PLUGIN_ROOT}/scripts/push.sh *), Bash(bash ${C
 
 Arguments reçus : $ARGUMENTS
 
-Où es-tu ? Si ton prompt système a une section « Memory » avec un dossier de mémoire auto, tu es dans Claude Code : suis « Dans Claude Code ». Sinon, tu es sur claude.ai : suis « Sur claude.ai ».
+Où es-tu ? Si ton prompt système te présente comme Claude Code, ou s'il a une section « Memory » avec un dossier de mémoire auto, tu es dans Claude Code. Cette section manque quand la mémoire auto est coupée, par exemple dans une session ouverte dans le clone du dépôt mémoire : tu es quand même dans Claude Code. Sinon, tu es sur claude.ai, dans le bac à sable d'une conversation. Dans Claude Code, suis « Dans Claude Code » ; sur claude.ai, suis « Sur claude.ai ».
 
 Le dépôt mémoire est cloné une fois sur l'appareil (par défaut dans `~/claude-memory`) et les projets branchés dessus y écrivent directement. C'est la seule situation où un commit et un push sont faits à la demande de l'utilisateur, et c'est le script qui s'en charge. Tu n'exécutes jamais git toi-même.
 
 **Portée.** Un push envoie le travail du projet de la session et de la partie transverse (la mémoire générale et les fichiers de la racine). Le travail en cours des autres projets n'est ni commité ni poussé : le script le liste à part, et il reste tel quel sur l'appareil. Les options de portée, à répéter à l'identique sur chaque appel de `push.sh` (simulation, puis commit) :
 - `--memory-dir "<dossier>"` : le dossier de mémoire auto de cette session, chemin exact de la section « Memory » de ton prompt système, jamais deviné. C'est l'option par défaut.
 - `--project "<nom>"` à la place, quand l'utilisateur nomme un projet.
+- aucune option quand ton prompt système n'a pas de section « Memory » (mémoire auto coupée, comme dans une session ouverte dans le clone) : seule la partie transverse part. Le script liste le travail des projets qui reste en local : dis-le, il partira quand l'utilisateur nommera le projet ou demandera tout le dépôt.
 - `--all` seulement si l'utilisateur demande explicitement de pousser tous les projets.
 
 ## Dans Claude Code
@@ -26,7 +27,7 @@ Le dépôt mémoire est cloné une fois sur l'appareil (par défaut dans `~/clau
    Code 5 : un motif de secret, dans un fichier ou dans un commit local pas encore poussé. Montre ce que le script nomme et propose de corriger. N'ajoute `--force` que si l'utilisateur te dit que c'est un faux positif.
    Code 6 : des marqueurs de conflit restent dans un fichier, ou une fusion est en cours. Reprends le skill pull à son étape des conflits, puis recommence.
    Code 11 : le clone appartient à un autre dépôt, montre le message et arrête-toi. Code 2 : git a échoué, montre l'erreur et arrête-toi.
-   Si le script écrit que le dossier de mémoire est hors du clone, ce que cette session a mémorisé n'est pas dans le clone et ne partirait pas : dis-le et propose le skill setup (étape « Brancher un projet »), puis reviens ici.
+   Si le script écrit que le dossier de mémoire est hors du clone, ce que cette session a mémorisé n'est pas dans le clone et ne partirait pas : dis-le et propose le skill setup (étape « Brancher un projet »), puis reviens ici. Exception : si ta session est ouverte dans le clone lui-même, il n'y a rien à brancher, relance sans `--memory-dir`.
    Avertissement « perte possible » (fichiers supprimés, ou beaucoup plus de lignes retirées qu'ajoutées) : la simulation l'affiche et le commit exigera `--accept-loss`. Reporte l'avertissement dans la question de l'étape 3, et n'ajoute `--accept-loss` à l'étape 4 que si l'utilisateur a confirmé en l'ayant vu.
 2. **Message de commit.** Le script annonce la portée sur sa première ligne. S'il dit « Rien a pousser », réponds d'une phrase, signale ce qui reste en local dans d'autres projets s'il le liste, et arrête-toi. Sinon, deux cas :
    - Il affiche le bloc « Message de commit » : le titre, une ligne « (recap a rediger par la session) », puis la liste des fichiers. Rédige le récap : deux ou trois phrases sur ce qui a changé dans le contenu de la mémoire, ton naturel, sans tiret long, sans guillemets doubles, sans `$` ni accent grave. Le message complet, c'est le titre tel quel, ton récap, la liste des fichiers telle quelle.

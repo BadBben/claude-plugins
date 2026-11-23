@@ -6,7 +6,7 @@
     {
       "name": "memoire",
       "source": "./plugins/memoire",
-      "description": "Memoire partagee entre appareils : synchronise la memoire auto de Claude Code avec un depot git (pull, push, memoire generale, consolidation sans perte, retour a une version precedente). Fonctionne aussi dans le chat claude.ai. Le depot est configure une fois par appareil."
+      "description": "Memoire partagee entre appareils : synchronise la memoire auto de Claude Code avec un depot git (mise en place guidee, pull, push, memoire generale, entretien pour l'enrichir, table de routage et index, optimisation avec score de sante, retour a une version precedente). Fonctionne aussi dans le chat claude.ai. Le depot est configure une fois par appareil."
     }
   ]
 }

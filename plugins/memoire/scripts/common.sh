@@ -14,11 +14,14 @@
 #   CLAUDE_MEMOIRE_HOME   where config.json lives
 #   CLAUDE_MEMOIRE_REPO   repository URL, takes precedence over config.json
 #   CLAUDE_MEMOIRE_HOST   name written in commit titles instead of the hostname
+#   CLAUDE_MEMOIRE_CLAUDE_MD  the user instruction file setup.sh writes its block into
+#                         (default ~/.claude/CLAUDE.md)
 #
 # Scope of a pull or a push. An operation covers the transverse part of the repository
 # (everything outside projets/<name>/: the general memory and the root files) plus the
 # projects it was given, usually the one of the session. The other projects are never
-# committed or pushed as a side effect. The scope options, read by pull.sh and push.sh:
+# committed or pushed as a side effect, and reindex.sh and optimiser.sh repair nothing in
+# them. The scope options, read by pull.sh, push.sh, reindex.sh and optimiser.sh:
 #   --project <name>      a project, by name (repeatable)
 #   --memory-dir <path>   the auto memory folder of the session; when it lies inside
 #                         <clone>/projets/<name>/, that project joins the scope
@@ -28,8 +31,10 @@
 #   1 usage, 2 git error, 3 project or commit unknown, 4 repository ahead of the clone
 #   (pull first), 5 secret pattern found, 6 conflict markers left or merge in progress,
 #   7 large loss refused (--accept-loss), 8 a merge would overwrite uncommitted work of a
-#   project outside the scope (pull.sh --include), 10 no repository configured,
-#   11 another repository is configured or cloned.
+#   project outside the scope (pull.sh --include), 9 findings left in the scope by
+#   reindex.sh or optimiser.sh, 10 no repository configured, 11 another repository is
+#   configured or cloned, 12 the block of the user instruction file cannot be written
+#   safely (setup.sh --bloc --write).
 
 MEMOIRE_HOME="${CLAUDE_MEMOIRE_HOME:-$HOME/.claude/memoire}"
 CONFIG_FILE="$MEMOIRE_HOME/config.json"
@@ -53,6 +58,27 @@ SCOPE_NOTE=""
 RAW_PROJECTS=""
 RAW_MEMORY_DIR=""
 
+# awk function shared by the programs that read the header of a memory file (reindex.sh,
+# optimiser.sh): put it in front of the program text.
+AWK_UNQUOTE='
+# Strip the quotes of a YAML scalar and undo the escapes they imply.
+function unquote(s,   q, e) {
+  sub(/^[ \t]+/, "", s)
+  sub(/[ \t]+$/, "", s)
+  q = substr(s, 1, 1)
+  e = substr(s, length(s), 1)
+  if (length(s) >= 2 && q == "\"" && e == "\"") {
+    s = substr(s, 2, length(s) - 2)
+    gsub(/\\"/, "\"", s)
+    gsub(/\\\\/, "\\", s)
+  } else if (length(s) >= 2 && q == "\047" && e == "\047") {
+    s = substr(s, 2, length(s) - 2)
+    gsub(/\047\047/, "\047", s)
+  }
+  gsub(/\t/, " ", s)
+  return s
+}'
+
 # Print a path the way the host tools expect it: mixed form (C:/Users/...) on Git Bash.
 display_path() {
   if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else echo "$1"; fi
@@ -71,6 +97,37 @@ make_tmp() {
   [[ -z "$TMP" ]] || return 0
   TMP=$(mktemp -d)
   trap 'rm -rf "$TMP"' EXIT
+}
+
+# Count the lines of a file that match an awk condition on tab-separated fields.
+count_where() {
+  LC_ALL=C awk -F'\t' "$1 { n++ } END { print n + 0 }" "$2"
+}
+
+# Replace a text file of the clone with its repaired content, in the line endings the file
+# had: a working copy checked out with Windows line endings stays in that form, so git does
+# not see every line as changed. <new> is written with LF. With "keep-end" as third
+# argument, a file that did not end with a line break still does not. The content is
+# written beside the target, then moved over it, so an interruption cannot leave half a file.
+# Usage: install_text <new> <target> [keep-end]
+install_text() {
+  local new="$1" target="$2" keep="${3:-}" crs=0 open_end=0 eol='\n'
+  if [[ -f "$target" ]]; then
+    # Carriage returns are counted with tr: awk and grep drop them on input in Git Bash.
+    crs=$(tr -cd '\r' < "$target" | wc -c | tr -d ' ')
+    # A command substitution drops a final line break: what is left is empty when the file
+    # ends with one.
+    if [[ "$keep" == "keep-end" && -s "$target" && -n "$(tail -c 1 "$target")" ]]; then open_end=1; fi
+  fi
+  if [[ "$crs" -gt 0 ]]; then eol='\r\n'; fi
+  if [[ "$open_end" -eq 1 ]]; then
+    LC_ALL=C awk -v eol="$eol" 'NR > 1 { printf "%s", eol } { printf "%s", $0 }' "$new" > "$target.memoire-tmp"
+  elif [[ "$crs" -gt 0 ]]; then
+    LC_ALL=C awk '{ printf "%s\r\n", $0 }' "$new" > "$target.memoire-tmp"
+  else
+    cat "$new" > "$target.memoire-tmp"
+  fi
+  mv -f "$target.memoire-tmp" "$target"
 }
 
 # Turn "owner/repo" into a GitHub HTTPS URL; leave full URLs untouched.
