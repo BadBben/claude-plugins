@@ -4,7 +4,7 @@ Plugins Claude de BadBben, distribués comme une marketplace : un dossier par pl
 
 | Plugin | Rôle | Doc |
 | --- | --- | --- |
-| `memoire` | Mémoire partagée entre appareils via un dépôt git : pull, push, mémoire générale, consolidation, retour en arrière | [plugins/memoire/README.md](plugins/memoire/README.md) |
+| `memoire` | Mémoire partagée entre appareils via un dépôt git : mise en place guidée, pull, push, mémoire générale, entretien pour l'enrichir, table de routage et index, optimisation, retour en arrière | [plugins/memoire/README.md](plugins/memoire/README.md) |
 
 ## Installer
 
@@ -16,14 +16,15 @@ Pour le plugin `memoire`, il vous faut aussi un dépôt git privé pour vos donn
 
 ## Versions
 
-Ce dépôt ne reçoit que des versions publiées. Chaque version arrive par une pull request `release/v<version>`, avec les notes du `CHANGELOG.md` du plugin en description. Rien n'est développé directement ici.
+Ce dépôt ne reçoit que des versions publiées. Chaque version arrive par une pull request `release/<plugin>-v<version>`, avec les notes du `CHANGELOG.md` du plugin en description. Rien n'est développé directement ici.
 
 ## Comment une mise à jour se propage
 
-Observé le 31 octobre 2026 avec la 0.4.1 du plugin memoire.
+Observé le 31 octobre 2026 avec la 0.4.1 du plugin memoire, et le 23 novembre 2026 avec la 0.11.0 pour le menu de l'app.
 
-1. **Le compte claude.ai** relit la marketplace et crée une nouvelle version interne du plugin. Pour ne pas attendre : le bouton de synchronisation sur la page de la marketplace, dans l'app desktop uniquement (Paramètres > Plugins > la marketplace), il n'existe pas sur le web. Avec ce bouton, la nouvelle version est sur le compte en moins d'une minute. Avec « Synchroniser automatiquement » seul, le délai n'est pas mesuré : le bouton a toujours été cliqué avant.
-2. **Claude Code** télécharge la nouvelle version au démarrage d'un processus, pas à `/reload-plugins`. Un démarrage headless suffit pour forcer, et la liste des plugins confirme la version arrivée. En Git Bash :
+1. **Dans l'app desktop** (Paramètres > Plugins) : lancer la recherche de mises à jour, puis cliquer sur « Mettre à jour ». Aucune commande à lancer. Sans ce geste, « Synchroniser automatiquement » finit par relire la marketplace, avec un délai qui n'a pas été mesuré.
+2. **L'app garde sa propre copie du plugin.** `claude plugin list` lit celle de la ligne de commande et peut donc afficher une version plus ancienne : pour savoir ce qu'a l'app, regarder son menu des plugins.
+3. **Claude Code en ligne de commande** télécharge la nouvelle version au démarrage d'un processus, pas à `/reload-plugins`. Un démarrage headless suffit pour forcer, et la liste des plugins confirme la version arrivée. En Git Bash :
    ```
    claude -p n --model haiku && claude plugin list
    ```
@@ -32,5 +33,5 @@ Observé le 31 octobre 2026 avec la 0.4.1 du plugin memoire.
    claude.cmd -p n --model haiku; claude.cmd plugin list
    ```
    La nouvelle copie arrive à côté de l'ancienne dans `~/.claude/plugins/synced/<compte>/` ; l'ancienne reste tant qu'une session l'utilise, puis est nettoyée.
-3. **Une session déjà ouverte** garde sa version : `/reload-plugins` ou nouvelle session. Dans l'app desktop, ouvrir une nouvelle session suffit, sans redémarrer l'app.
-4. **Une session cloud** (claude.ai/code) démarre toujours à neuf : elle a la dernière version.
+4. **Une session déjà ouverte** garde sa version : `/reload-plugins` ou nouvelle session. Dans l'app desktop, ouvrir une nouvelle session suffit, sans redémarrer l'app.
+5. **Une session cloud** (claude.ai/code) démarre toujours à neuf : elle a la dernière version.

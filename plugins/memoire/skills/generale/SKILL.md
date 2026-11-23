@@ -9,7 +9,7 @@ allowed-tools: Bash(bash ${CLAUDE_PLUGIN_ROOT}/scripts/generale.sh *), Bash(bash
 
 Sujet demandé : $ARGUMENTS
 
-Où es-tu ? Si ton prompt système a une section « Memory » avec un dossier de mémoire auto, tu es dans Claude Code. Sinon, tu es sur claude.ai : mêmes étapes, avec `CLAUDE_MEMOIRE_REPO=<url>` devant chaque commande (voir « Sur claude.ai » en bas).
+Où es-tu ? Si ton prompt système te présente comme Claude Code, ou s'il a une section « Memory » avec un dossier de mémoire auto, tu es dans Claude Code. Cette section manque quand la mémoire auto est coupée, par exemple dans une session ouverte dans le clone du dépôt mémoire : tu es quand même dans Claude Code. Sinon, tu es sur claude.ai, dans le bac à sable d'une conversation. Sur claude.ai : mêmes étapes, avec `CLAUDE_MEMOIRE_REPO=<url>` devant chaque commande (voir « Sur claude.ai » en bas).
 
 La mémoire générale est le dossier `general/` du clone du dépôt mémoire (par défaut `~/claude-memory/general/`, chemin exact affiché par le script). Elle se lit sur place, même hors ligne, et suit le reste du dépôt : ce sont les skills pull et push qui la synchronisent. Elle n'est jamais chargée en entier : l'index d'abord, puis le seul fichier pertinent.
 
