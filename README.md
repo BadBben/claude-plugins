@@ -20,18 +20,7 @@ Ce dépôt ne reçoit que des versions publiées. Chaque version arrive par une 
 
 ## Comment une mise à jour se propage
 
-Observé le 31 octobre 2026 avec la 0.4.1 du plugin memoire, et le 23 novembre 2026 avec la 0.11.0 pour le menu de l'app.
-
-1. **Dans l'app desktop** (Paramètres > Plugins) : lancer la recherche de mises à jour, puis cliquer sur « Mettre à jour ». Aucune commande à lancer. Sans ce geste, « Synchroniser automatiquement » finit par relire la marketplace, avec un délai qui n'a pas été mesuré.
-2. **L'app garde sa propre copie du plugin.** `claude plugin list` lit celle de la ligne de commande et peut donc afficher une version plus ancienne : pour savoir ce qu'a l'app, regarder son menu des plugins.
-3. **Claude Code en ligne de commande** télécharge la nouvelle version au démarrage d'un processus, pas à `/reload-plugins`. Un démarrage headless suffit pour forcer, et la liste des plugins confirme la version arrivée. En Git Bash :
-   ```
-   claude -p n --model haiku && claude plugin list
-   ```
-   Dans PowerShell (pas de `&&`, et `claude.cmd` si l'installation est npm) :
-   ```
-   claude.cmd -p n --model haiku; claude.cmd plugin list
-   ```
-   La nouvelle copie arrive à côté de l'ancienne dans `~/.claude/plugins/synced/<compte>/` ; l'ancienne reste tant qu'une session l'utilise, puis est nettoyée.
-4. **Une session déjà ouverte** garde sa version : `/reload-plugins` ou nouvelle session. Dans l'app desktop, ouvrir une nouvelle session suffit, sans redémarrer l'app.
-5. **Une session cloud** (claude.ai/code) démarre toujours à neuf : elle a la dernière version.
+1. **Dans l'app desktop** (Paramètres > Plugins) : lancer la recherche de mises à jour, puis cliquer sur « Mettre à jour ». Aucune commande à lancer.
+2. **Ouvrir une nouvelle session.** Une session déjà ouverte garde sa version, sauf après `/reload-plugins`. Il n'y a pas besoin de redémarrer l'app.
+3. **Claude Code en ligne de commande** garde sa propre copie du plugin, mise à jour à son prochain démarrage.
+4. **Une session cloud** (claude.ai/code) démarre toujours à neuf : elle a la dernière version.

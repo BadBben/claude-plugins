@@ -2,6 +2,10 @@
 
 Une section par version, la plus récente en premier. La section de la version publiée sert de description à la pull request sur la marketplace publique.
 
+## 0.11.3
+
+Documentation seule : les README décrivent la mise à jour par le menu des plugins de l'app, sans commande à lancer. Aucun script ni skill ne change.
+
 ## 0.11.2
 
 Le skill `entretien`, après son premier passage réel. Aucun script ne change.
